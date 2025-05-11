@@ -1,11 +1,27 @@
 import platform
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import NW, Canvas, PhotoImage, filedialog, ttk
+# Make sure Pillow is installed (pip install pillow)
+
 import os
 import sys
-from buildStrings import APP_ICON
+
+import PIL
+from PIL import Image, ImageTk
+from buildStrings import APP_ICON, APP_IMAGE
 
 icon_path = APP_ICON
+
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 
 class CSVSelectorGUI:
@@ -13,28 +29,38 @@ class CSVSelectorGUI:
         self.root = root
         self.root.title(guiTitle)
         self.selected_files = ()
-        self.root.geometry("600x300")
+        self.root.geometry("600x500")
+
+        # Status bar
+        self.status_var = tk.StringVar()
+        self.status_var.set("Ready. Please select CSV files.")
 
         # Set window icon if provided
-        if icon_path and os.path.exists(icon_path):
+        embeddedIconPath = resource_path(icon_path)
+        if not embeddedIconPath:
+            embeddedIconPath = icon_path
+        if embeddedIconPath and os.path.exists(embeddedIconPath):
             try:
                 # Use PhotoImage for .gif, .pgm, .ppm formats
-                if icon_path.lower().endswith(('.gif', '.pgm', '.ppm')):
-                    icon = tk.PhotoImage(file=icon_path)
+                if embeddedIconPath.lower().endswith(('.gif', '.pgm', '.ppm')):
+                    icon = tk.PhotoImage(file=embeddedIconPath)
                     self.root.iconphoto(True, icon)
                 # For other formats like .ico, .png, etc. (Windows/Linux)
                 else:
                     # Try to use different methods based on platform
                     if platform.system() == "Windows":
-                        self.root.iconbitmap(icon_path)
+                        self.root.iconbitmap(embeddedIconPath)
                     else:
                         # For Linux/Mac, convert icon to PhotoImage if possible
                         try:
                             from PIL import Image, ImageTk
-                            icon = ImageTk.PhotoImage(Image.open(icon_path))
+                            icon = ImageTk.PhotoImage(
+                                Image.open(embeddedIconPath))
                             self.root.iconphoto(True, icon)
                         except ImportError:
                             # If PIL is not available, ignore icon setting
+                            print("ICON FAILED TO SET")
+                            self.status_var.set("ICON FAILED TO SET")
                             pass
             except Exception as e:
                 print(f"Warning: Could not set icon: {e}")
@@ -102,10 +128,6 @@ class CSVSelectorGUI:
                                       command=self.root.destroy)
         self.exit_button.pack(side=tk.RIGHT, padx=5)
 
-        # Status bar
-        self.status_var = tk.StringVar()
-        self.status_var.set("Ready. Please select CSV files.")
-
         status_bar = ttk.Label(
             root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
@@ -162,6 +184,30 @@ def runCSVguiProcessCallback(process_callback=None, guiTitle="CSVguiSelector"):
     """
     root = tk.Tk()
     app = CSVSelectorGUI(root, guiTitle, process_callback)
+
+    # Large image/icon display
+    # Replace with your image file
+    embeddedImgPath = resource_path(icon_path)
+    if not embeddedImgPath:
+        embeddedImgPath = APP_IMAGE
+    image = PIL.Image.open(embeddedImgPath)
+    image = image.resize(
+        (200, 200), PIL.Image.Resampling.LANCZOS)  # Resize to fit
+    photo = PIL.ImageTk.PhotoImage(image)
+    # Create a Label to hold the image
+    image_label = tk.Label(root, image=photo)
+    image_label.image = photo  # Keep a reference!
+
+    # Place it at the top-left corner
+    # image_label.place(x=0, y=0)
+    image_label.pack(anchor='s')
+
+    # canvas = Canvas(root,  width=400, height=400)
+    # canvas.pack()
+
+    # img = PhotoImage(file=APP_IMAGE)
+    # canvas.create_image(10, 10, anchor=NW, image=img)
+
     root.mainloop()
 
     # Return the selected files if the process button was pressed and no callback was provided

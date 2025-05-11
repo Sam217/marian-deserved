@@ -17,7 +17,7 @@ import platform
 from pathlib import Path
 
 # Configuration
-from buildStrings import MAIN_SCRIPT
+from buildStrings import APP_IMAGE, MAIN_SCRIPT
 from buildStrings import APP_NAME
 from buildStrings import APP_VERSION
 from buildStrings import APP_ICON
@@ -73,7 +73,9 @@ def create_spec_file():
         "--name", APP_NAME,
         "--onefile",
         "--windowed",
-        "--clean"  # Clean PyInstaller cache
+        "--clean",  # Clean PyInstaller cache
+        "--add-data", f"{APP_ICON};.",
+        "--add-data", f"{APP_IMAGE};."
     ]
 
     # Add icon if specified
