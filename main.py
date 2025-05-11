@@ -3,10 +3,13 @@ import sqlite3
 import sys
 import os
 import unicodedata
+from charset_normalizer import from_path
 from openpyxl import Workbook
 from openpyxl import load_workbook
 import openpyxl.styles
+import openpyxl.utils
 
+from GUI import runCSVguiProcessCallback
 
 GDataTypesCZECH = {
     "datum": "TEXT",
@@ -89,79 +92,100 @@ def createDBoverwrite():
 
 
 def csvToSqlite(cursor, sourceCsv, suppliersCountryCsv):
-    with open(suppliersCountryCsv, "r", encoding="utf8") as supplierList:
-        # Step 2: Read the CSV file
-        with open(sourceCsv, "r", encoding="utf8") as file:
-            importedCSVreader = csv.reader(file)
-            # Get column headers from first row
-            headers = next(importedCSVreader)
+    encoding_sourceCsv = "utf8"
+    encoding_suppliersCountryCsv = "utf8"
+    try:
+        result = from_path(sourceCsv).best()
+        if result and result.encoding:
+            encoding_sourceCsv = result.encoding
+        else:
+            print(f'error encoding: no result')
 
-            # read suppliers table
-            supplierCsvReader = csv.reader(supplierList, delimiter=";")
-            supplierheader = next(supplierCsvReader)
+        result = from_path(suppliersCountryCsv).best()
+        if result and result.encoding:
+            encoding_suppliersCountryCsv = result.encoding
+        else:
+            print(f'error encoding: no result')
+    except Exception:
+        print('failed to check enconding, trying with UTF-8...')
 
-            supplierTableName = "suppliersCountry"
-            columnsSup = []
-            for s in supplierheader:
-                s = s.replace(" ", "_")
-                normalized = removeDiacritics(s)
-                # DEBUG print
-                print(f"{s} -> {normalized}")
-                columnsSup.append(normalized)
+    try:
+        with open(suppliersCountryCsv, "r", encoding=encoding_suppliersCountryCsv) as supplierList:
+            # Step 2: Read the CSV file
+            with open(sourceCsv, "r", encoding=encoding_sourceCsv) as file:
+                importedCSVreader = csv.reader(file)
+                # Get column headers from first row
+                headers = next(importedCSVreader)
 
-            queryCreateSuppTable = f'CREATE TABLE IF NOT EXISTS {supplierTableName} ({", ".join(columnsSup)})'
-            cursor.execute(queryCreateSuppTable)
+                # read suppliers table
+                supplierCsvReader = csv.reader(supplierList, delimiter=";")
+                supplierheader = next(supplierCsvReader)
 
-            supplierValues = ", ".join(["?" for _ in supplierheader])
-            # DEBUG print header
-            # print(f"supplierValues: {supplierValues}")
-            queryInsertSup = (
-                f"INSERT INTO {supplierTableName} VALUES ({supplierValues})"
-            )
+                supplierTableName = "suppliersCountry"
+                columnsSup = []
+                for s in supplierheader:
+                    s = s.replace(" ", "_")
+                    normalized = removeDiacritics(s)
+                    # DEBUG print
+                    print(f"{s} -> {normalized}")
+                    columnsSup.append(normalized)
 
-            for row in supplierCsvReader:
-                cursor.execute(queryInsertSup, row)
+                queryCreateSuppTable = f'CREATE TABLE IF NOT EXISTS {supplierTableName} ({", ".join(columnsSup)})'
+                cursor.execute(queryCreateSuppTable)
 
-            sqliteDataTypes = []
-            # process header data types
-            for h in headers:
-                typeFound = False
-                for name, type in GDataTypesCZECH.items():
-                    if h.lower().find(name) != -1:
-                        sqliteDataTypes.append(type)
-                        typeFound = True
-                        break
+                supplierValues = ", ".join(["?" for _ in supplierheader])
+                # DEBUG print header
+                # print(f"supplierValues: {supplierValues}")
+                queryInsertSup = (
+                    f"INSERT INTO {supplierTableName} VALUES ({supplierValues})"
+                )
 
-                # everything that is not easily identifiable is TEXT
-                if typeFound == False:
-                    sqliteDataTypes.append("TEXT")
+                for row in supplierCsvReader:
+                    cursor.execute(queryInsertSup, row)
 
-            # Step 3: Create table dynamically based on CSV headers
-            # Replace spaces with underscores and handle special characters if needed
-            columns = []
-            for i, h in enumerate(headers):
-                h1 = h.replace(" ", "_")
-                normalized = removeDiacritics(h1)
-                # DEBUG print
-                # print(f"{h} -> {h1} -> {normalized}")
-                columns.insert(i, f'"{normalized}" {sqliteDataTypes[i]}')
+                sqliteDataTypes = []
+                # process header data types
+                for h in headers:
+                    typeFound = False
+                    for name, type in GDataTypesCZECH.items():
+                        if h.lower().find(name) != -1:
+                            sqliteDataTypes.append(type)
+                            typeFound = True
+                            break
 
-            productsTableName = "suppliedProducts"
-            queryCreateTable = (
-                f'CREATE TABLE IF NOT EXISTS {productsTableName} ({", ".join(columns)})'
-            )
+                    # everything that is not easily identifiable is TEXT
+                    if typeFound == False:
+                        sqliteDataTypes.append("TEXT")
 
-            # DEBUG print sqlite types
-            # print(f"queryCreateTable: {queryCreateTable}")
-            cursor.execute(queryCreateTable)
+                # Step 3: Create table dynamically based on CSV headers
+                # Replace spaces with underscores and handle special characters if needed
+                columns = []
+                for i, h in enumerate(headers):
+                    h1 = h.replace(" ", "_")
+                    normalized = removeDiacritics(h1)
+                    # DEBUG print
+                    # print(f"{h} -> {h1} -> {normalized}")
+                    columns.insert(i, f'"{normalized}" {sqliteDataTypes[i]}')
 
-            # Step 4: Prepare INSERT query
-            placeholders = ", ".join(["?" for _ in headers])
-            queryInsert = f"INSERT INTO {productsTableName} VALUES ({placeholders})"
+                productsTableName = "suppliedProducts"
+                queryCreateTable = (
+                    f'CREATE TABLE IF NOT EXISTS {productsTableName} ({", ".join(columns)})'
+                )
 
-            # Step 5: Insert CSV data into the table
-            for row in importedCSVreader:
-                cursor.execute(queryInsert, row)
+                # DEBUG print sqlite types
+                # print(f"queryCreateTable: {queryCreateTable}")
+                cursor.execute(queryCreateTable)
+
+                # Step 4: Prepare INSERT query
+                placeholders = ", ".join(["?" for _ in headers])
+                queryInsert = f"INSERT INTO {productsTableName} VALUES ({placeholders})"
+
+                # Step 5: Insert CSV data into the table
+                for row in importedCSVreader:
+                    cursor.execute(queryInsert, row)
+    except UnicodeDecodeError as e:
+        raise ValueError(
+            f"Failed to decode files '{sourceCsv} & {suppliersCountryCsv}' with encoding '{encoding_sourceCsv}' & '{encoding_suppliersCountryCsv}'.") from e
 
 
 def createCoeffsTable(cursor, goodsTypeStr, coeffsTable):
@@ -351,20 +375,24 @@ def buildDB(sourceCsv, suppliersCountryCsv):
     # PrintOutDemoResult(conn, cursor, totalOblec, totalBoty,
     #                    totalKosme, totalKabel, sqlQueryJoinCommonCZ, goodsTypeStr)
 
+    # Commit changes
+    conn.commit()
     print("CSV data successfully imported into SQLite database!")
 
     wb = Workbook()
+    # store the name of the "Sheet1" default sheet for later deletion as we create new ones with proper names
+    defaultSheet = wb.active
     # ws = wb.active
     WriteToXLSX(cursor, materialsCZview,
                 materialsCZviewTypes, resultCZview, wb)
     WriteToXLSX(cursor, materialsEU_USview,
                 materialsEU_USviewTypes, resultEU_USview, wb)
 
+    wb.remove(defaultSheet)
     # Uložení souboru
     wb.save("ekokom.xlsx")
 
-    # Step 6: Commit changes and close connection
-    conn.commit()
+    # Close connection
     conn.close()
 
 
@@ -372,22 +400,22 @@ def WriteToXLSX(sqlCursor, materialsView, materialsViewTypes, resultView, wb):
     wb.create_sheet(materialsView)
     ws = wb[materialsView]
 
-    # Zápis hlavičky
+    # Write header
     ws.append(["Dodavatel", "Kategorie", "Množství", "PůvodCZ",
               'Plast [g]', 'Papir [g]', 'Lepenka [g]'])
 
-    # Zápis dat
+    # Write data
     xlsxEkokomCZquery = f"""
         SELECT * FROM {materialsView}
     """
 
     qResult = sqlCursor.execute(xlsxEkokomCZquery)
-    numRows = 0
+    numRows = 1  # excel counts rows from 1
     for row in qResult.fetchall():
         ws.append(row)
         numRows += 1
 
-    # tucne
+    # make header bold
     head = ws[1]
     boldFont = openpyxl.styles.Font(bold=True)
     sideStyle = openpyxl.styles.Side(style='thin')
@@ -395,7 +423,7 @@ def WriteToXLSX(sqlCursor, materialsView, materialsViewTypes, resultView, wb):
     for cell in head:
         cell.font = boldFont
 
-    # 4️⃣ — vytvoříme styl ohraničení
+    # 4️⃣ — create border style
     thinBorder = openpyxl.styles.Border(
         left=sideStyle,
         right=sideStyle,
@@ -403,19 +431,19 @@ def WriteToXLSX(sqlCursor, materialsView, materialsViewTypes, resultView, wb):
         bottom=sideStyle
     )
 
-    # 5️⃣ — projdeme všechny buňky a přidáme ohraničení
+    # 5️⃣ — iterate cells and add borders
     for row in ws.iter_rows():
         for cell in row:
             cell.border = thinBorder
 
     ws.append([""])
     ws.append([""])
+    currentXlsxRow = numRows + 2  # skip two rows to add some space for readability
 
     columnCatnames = ["Kategorie celkem",
                       'Plast [g]', 'Papir [g]', 'Lepenka [g]']
 
-    currentXlsxRow = numRows + 2  # skip two rows to add some space for readability
-    currentXlsxColumn = 3
+    currentXlsxColumn = 3  # align columns for readability
 
     # Zápis hlavičky ručně, se stylem
     for col_index, col_name in enumerate(columnCatnames, start=1):
@@ -441,7 +469,7 @@ def WriteToXLSX(sqlCursor, materialsView, materialsViewTypes, resultView, wb):
         for col_index, value in enumerate(rowData, start=1):
             cell = ws.cell(row=i + currentXlsxRow,
                            column=col_index + currentXlsxColumn, value=value)
-            if col_index == 0:
+            if col_index == 1:
                 cell.font = boldFont
             cell.border = thinBorder
 
@@ -471,7 +499,7 @@ def WriteToXLSX(sqlCursor, materialsView, materialsViewTypes, resultView, wb):
     for col_index, value in enumerate(rowData, start=1):
         cell = ws.cell(row=i + currentXlsxRow,
                        column=col_index + currentXlsxColumn, value=value)
-        if col_index == 0:
+        if col_index == 1:
             cell.font = boldFont
         cell.border = thinBorder
 
@@ -484,6 +512,23 @@ def WriteToXLSX(sqlCursor, materialsView, materialsViewTypes, resultView, wb):
     #     for c in q:
     #         rowData.append(c)
     # ws.append(rowData)
+
+    # adjust column sizes to make them readable by default
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column  # Sloupec jako číslo
+        column_letter = openpyxl.utils.get_column_letter(column)
+
+        for cell in col:
+            # try:
+            value = str(cell.value)
+            if len(value) > max_length:
+                max_length = len(value)
+            # except:
+            #     pass
+
+        adjusted_width = max_length + 2  # small margin
+        ws.column_dimensions[column_letter].width = adjusted_width
 
 
 def PrintOutDemoResult(conn, cursor, totalOblec, totalBoty, totalKosme, totalKabel, sqlQueryJoinCommonCZ, goodsTypeStr):
@@ -552,8 +597,14 @@ def main():
     elif len(csvData) == 0:
         sys.exit(2)
 
-    buildDB(csvData, "dodavatele2.csv")
+    csvFiles = runCSVguiProcessCallback(
+        process_callback=buildDB, guiTitle="marian_deserved_EKOkot")
+    if len(csvFiles) == 0:
+        print(f'Failed: {csvFiles}')
+    # buildDB(csvData, "dodavatele2.csv")
 
+    # create spec file for binary executable export
+    # Create basic spec file
     return 0
 
 

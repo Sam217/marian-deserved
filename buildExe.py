@@ -17,12 +17,12 @@ import platform
 from pathlib import Path
 
 # Configuration
-MAIN_SCRIPT = "main.py"  # The entry point to your application
-APP_NAME = "marian_deserved"  # Name of your application
-APP_VERSION = "1.0.0"
-APP_ICON = "AuthorBetter.ico"  # Path to .ico file (optional)
-EXTRA_DATA = []  # List of tuples: (source_path, dest_dir_in_exe)
-INCLUDE_PACKAGES = []  # Any packages that PyInstaller might miss
+from buildStrings import MAIN_SCRIPT
+from buildStrings import APP_NAME
+from buildStrings import APP_VERSION
+from buildStrings import APP_ICON
+from buildStrings import EXTRA_DATA
+from buildStrings import INCLUDE_PACKAGES
 
 
 def check_pyinstaller():

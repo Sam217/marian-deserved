@@ -1,7 +1,11 @@
+import platform
 import tkinter as tk
 from tkinter import filedialog, ttk
 import os
 import sys
+from buildStrings import APP_ICON
+
+icon_path = APP_ICON
 
 
 class CSVSelectorGUI:
@@ -10,6 +14,30 @@ class CSVSelectorGUI:
         self.root.title(guiTitle)
         self.selected_files = ()
         self.root.geometry("600x300")
+
+        # Set window icon if provided
+        if icon_path and os.path.exists(icon_path):
+            try:
+                # Use PhotoImage for .gif, .pgm, .ppm formats
+                if icon_path.lower().endswith(('.gif', '.pgm', '.ppm')):
+                    icon = tk.PhotoImage(file=icon_path)
+                    self.root.iconphoto(True, icon)
+                # For other formats like .ico, .png, etc. (Windows/Linux)
+                else:
+                    # Try to use different methods based on platform
+                    if platform.system() == "Windows":
+                        self.root.iconbitmap(icon_path)
+                    else:
+                        # For Linux/Mac, convert icon to PhotoImage if possible
+                        try:
+                            from PIL import Image, ImageTk
+                            icon = ImageTk.PhotoImage(Image.open(icon_path))
+                            self.root.iconphoto(True, icon)
+                        except ImportError:
+                            # If PIL is not available, ignore icon setting
+                            pass
+            except Exception as e:
+                print(f"Warning: Could not set icon: {e}")
 
         # Set minimum window size
         self.root.minsize(500, 250)
@@ -137,7 +165,6 @@ def runCSVguiProcessCallback(process_callback=None, guiTitle="CSVguiSelector"):
     root.mainloop()
 
     # Return the selected files if the process button was pressed and no callback was provided
-    print(f"selected files are {app.selected_files}")
     if process_callback is None and hasattr(app, 'selected_files'):
         return app.selected_files
     return None, None
